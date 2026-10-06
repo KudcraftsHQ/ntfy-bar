@@ -32,7 +32,30 @@ posts native macOS notifications.
 - Swift 6 toolchain: Xcode 16+ or the matching Command Line Tools
 - An ntfy server (self-hosted or ntfy.sh)
 
-## Build and install
+## Install a release
+
+Download `ntfy-bar-<version>.zip` from the
+[latest release](https://github.com/KudcraftsHQ/ntfy-bar/releases/latest), unzip it and move
+`ntfy-bar.app` to `~/Applications` (or `/Applications`).
+
+The app is **ad-hoc signed, not notarized**, so the first launch is blocked by Gatekeeper
+("Apple could not verify…"). Once per install:
+
+1. Open the app, dismiss the warning.
+2. **System Settings › Privacy & Security**, scroll down, click **Open Anyway** next to ntfy-bar,
+   and confirm.
+
+Or from Terminal: `xattr -dr com.apple.quarantine ~/Applications/ntfy-bar.app`.
+
+### Updates
+
+ntfy-bar updates itself with [Sparkle](https://sparkle-project.org). It checks once a day,
+downloads new versions in the background and installs them when the app quits (or when you
+choose **Check for Updates…** in the popover's ⋯ menu or in Settings). Updates are verified
+with an EdDSA signature, and Sparkle clears the quarantine flag on them, so the Gatekeeper step
+is only needed for the first install.
+
+## Build from source
 
 ```sh
 git clone https://github.com/KudcraftsHQ/ntfy-bar.git
@@ -133,6 +156,7 @@ Sources/NtfyBar/
   IconCache.swift     icon and attachment cache
   Storage.swift       state file, settings, ntfy CLI config importer
   Snapshot.swift      renders the popover to PNG (screenshots)
+  Updater.swift       Sparkle updater (feed and public key in Resources/Info.plist)
 Sources/KeychainShim/ C shim for the Keychain access list
 scripts/make-icon.swift  regenerates Resources/AppIcon.icns
 ```
@@ -144,6 +168,17 @@ Regenerate the README screenshots from built-in sample data:
 build/ntfy-bar.app/Contents/MacOS/ntfy-bar --snapshot docs/popover-light.png --sample
 build/ntfy-bar.app/Contents/MacOS/ntfy-bar --snapshot docs/popover-dark.png --sample --dark
 ```
+
+## Releasing
+
+Push a tag: `git tag v1.2.0 && git push origin v1.2.0`. The `Release` workflow builds the app with
+that version, zips it, signs the zip with the EdDSA key in the `SPARKLE_ED_PRIVATE_KEY` secret,
+writes `appcast.xml`, checks the signature against `SUPublicEDKey` in the built app, and publishes
+both files as a GitHub Release. The feed URL is
+`https://github.com/KudcraftsHQ/ntfy-bar/releases/latest/download/appcast.xml`, so the newest
+non-prerelease is always what Macs update to. Tags with a `-` (e.g. `v1.2.0-rc1`) are published
+as prereleases and never offered as updates. Pull requests that touch the release path run the
+same steps as a dry run.
 
 ## License
 

@@ -105,6 +105,9 @@ struct MenuView: View {
                 }
                 Button("Clear All…") { confirmClear(topic: nil) }
                     .disabled(model.entries.isEmpty)
+                Divider()
+                Button("Check for Updates…") { Updater.shared.checkForUpdates() }
+                    .disabled(!Updater.shared.isAvailable)
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 13))
