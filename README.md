@@ -11,7 +11,8 @@ posts native macOS notifications.
 
 ## Features
 
-- **Menu bar only.** No Dock icon. The bell fills in and shows a count when there are unread messages.
+- **Menu bar only.** No Dock icon. The mascot fills in, wears its badge and shows a count when there are unread
+  messages, and closes its eyes when ntfy-bar isn't connected.
 - **Live stream.** One long-lived JSON stream for all topics, with Basic auth or an access token.
 - **Nothing missed.** Reconnects resume from the last message you received. Backoff is exponential,
   capped at 60 s, and the app reconnects right away after wake or a network change.
@@ -154,11 +155,12 @@ Sources/NtfyBar/
   SettingsView.swift  settings window
   Notifier.swift      UNUserNotificationCenter posting and click handling
   IconCache.swift     icon and attachment cache
+  MascotGlyph.swift   the menu-bar mascot (template image, three states)
   Storage.swift       state file, settings, ntfy CLI config importer
   Snapshot.swift      renders the popover to PNG (screenshots)
   Updater.swift       Sparkle updater (feed and public key in Resources/Info.plist)
 Sources/KeychainShim/ C shim for the Keychain access list
-scripts/make-icon.swift  regenerates Resources/AppIcon.icns
+scripts/make-icon.py  regenerates Resources/AppIcon.icns from design/logo (needs Pillow)
 ```
 
 Regenerate the README screenshots from built-in sample data:

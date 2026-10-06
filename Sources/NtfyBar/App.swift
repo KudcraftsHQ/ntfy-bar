@@ -23,15 +23,15 @@ struct MenuBarLabel: View {
     var body: some View {
         let unread = model.unreadCount
         HStack(spacing: 2) {
-            Image(systemName: symbol(unread: unread))
+            Image(nsImage: MascotGlyph.image(glyph(unread: unread)))
             if unread > 0 { Text(unread > 99 ? "99+" : "\(unread)") }
         }
     }
 
-    private func symbol(unread: Int) -> String {
+    private func glyph(unread: Int) -> MascotGlyph.State {
         switch model.status {
-        case .authError, .notConfigured: "bell.slash"
-        default: unread > 0 ? "bell.fill" : "bell"
+        case .authError, .notConfigured: .asleep
+        default: unread > 0 ? .unread : .idle
         }
     }
 }
