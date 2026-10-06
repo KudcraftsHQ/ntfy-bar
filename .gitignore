@@ -1,0 +1,13 @@
+# Build output
+.build/
+build/
+*.app
+.swiftpm/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+
+# Local / OS
+.DS_Store
+*.log
+.env*
