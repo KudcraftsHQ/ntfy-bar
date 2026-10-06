@@ -395,6 +395,15 @@ struct MessageRow: View {
 
     private var m: NtfyMessage { entry.message }
     private var preview: String { TextUtil.preview(m.body) }
+    /// Drops ellipses the sender already put at line ends, so SwiftUI's truncation doesn't render "……".
+    private var collapsedPreview: String {
+        preview.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
+            var l = String(line)
+            while l.hasSuffix("…") || l.hasSuffix("...") { l = String(l.dropLast(l.hasSuffix("…") ? 1 : 3)) }
+            return l
+        }.joined(separator: "\n")
+    }
+
     private var expandable: Bool {
         let p = preview
         return p.count > 90 || p.filter { $0 == "\n" }.count >= 2
@@ -426,14 +435,15 @@ struct MessageRow: View {
                 }
                 if !preview.isEmpty {
                     HStack(alignment: .bottom, spacing: 4) {
-                        Text(preview)
+                        Text(expanded ? preview : collapsedPreview)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .lineLimit(expanded ? nil : 2)
                             .lineSpacing(1)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        if expandable && (hovering || expanded) {
+                        // Always laid out when expandable, only faded in on hover, so hovering never reflows the text.
+                        if expandable {
                             Button(action: toggleExpanded) {
                                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 9, weight: .semibold))
@@ -443,6 +453,8 @@ struct MessageRow: View {
                             }
                             .buttonStyle(.plain)
                             .help(expanded ? "Show less" : "Show more")
+                            .opacity(hovering || expanded ? 1 : 0)
+                            .allowsHitTesting(hovering || expanded)
                         }
                     }
                     .padding(.top, 3)
