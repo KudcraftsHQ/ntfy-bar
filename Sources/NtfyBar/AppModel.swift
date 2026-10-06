@@ -8,7 +8,7 @@ import ServiceManagement
 final class AppModel {
     static let shared = AppModel()
 
-    private static let maxEntries = 500
+    private static let maxEntries = 2000
     private static let maxSeenIds = 2000
     /// Messages older than (launch - grace) are backlog: listed, but never notified.
     private static let notifyGrace: TimeInterval = 60
@@ -16,10 +16,15 @@ final class AppModel {
     // MARK: Observable state
 
     private(set) var entries: [Entry] = []
-    private(set) var status: ConnectionStatus = .notConfigured
+    var status: ConnectionStatus = .notConfigured
     private(set) var hasPassword = false
     private(set) var hasToken = false
     var notificationsAllowed: Bool?
+    // Catalog sync state (AppModel+Catalog.swift).
+    var lastCatalogSync: Date?
+    var catalogError: String?
+    @ObservationIgnored var catalogTask: Task<Void, Never>?
+    @ObservationIgnored var catalogETag: String?
 
     var settings: AppSettings {
         didSet {
@@ -27,8 +32,11 @@ final class AppModel {
             Storage.saveSettings(settings)
             let connectionChanged = settings.serverURL != oldValue.serverURL
                 || settings.username != oldValue.username
-                || settings.enabledTopicNames != oldValue.enabledTopicNames
+                || settings.streamTopicNames != oldValue.streamTopicNames
             if connectionChanged { scheduleReconnect() }
+            if settings.serverURL != oldValue.serverURL || settings.catalogEnabled != oldValue.catalogEnabled {
+                restartCatalogSync(resetETag: true)
+            }
         }
     }
 
@@ -122,6 +130,7 @@ final class AppModel {
             Task { @MainActor in
                 Log.write("wake: reconnecting")
                 AppModel.shared.restartStream()
+                AppModel.shared.restartCatalogSync()
             }
         }
 
@@ -135,7 +144,8 @@ final class AppModel {
         pathMonitor = monitor
 
         restartStream()
-        if !settings.isConfigured { SettingsWindowController.shared.show() }
+        restartCatalogSync()
+        if !settings.isConfigured && !(settings.isCatalogEnabled && authorizationHeader != nil) { SettingsWindowController.shared.show() }
     }
 
     private func handlePathChange(satisfied: Bool, signature: String) {
@@ -159,9 +169,10 @@ final class AppModel {
             hasToken = !newToken.isEmpty
         }
         restartStream()
+        restartCatalogSync(resetETag: true)
     }
 
-    private var authorizationHeader: String? {
+    var authorizationHeader: String? {
         if !token.isEmpty { return "Bearer \(token)" }
         guard !settings.username.isEmpty else { return nil }
         let raw = "\(settings.username):\(password)"
@@ -235,7 +246,7 @@ final class AppModel {
     private func streamURL() -> URL? {
         var base = settings.serverURL.trimmingCharacters(in: .whitespaces)
         while base.hasSuffix("/") { base.removeLast() }
-        let topics = settings.enabledTopicNames.joined(separator: ",")
+        let topics = settings.streamTopicNames.joined(separator: ",")
         guard var comps = URLComponents(string: "\(base)/\(topics)/json") else { return nil }
         if let since = sinceParameter() { comps.queryItems = [URLQueryItem(name: "since", value: since)] }
         return comps.url
@@ -281,6 +292,7 @@ final class AppModel {
                 attempt = 0
                 status = .connected
                 Log.write("stream: open")
+                restartCatalogSync()
             case "keepalive":
                 if status != .connected { status = .connected }
             case "message":
@@ -293,7 +305,11 @@ final class AppModel {
 
     // MARK: Messages
 
-    private func ingest(_ m: NtfyMessage) {
+    func ingest(_ m: NtfyMessage, notify: Bool = true) {
+        if m.topic == settings.syncTopic {
+            if CatalogSync.isSyncSignal(m.message) { restartCatalogSync(resetETag: true) }
+            return
+        }
         if m.time >= (lastMessageTime ?? 0) {
             lastMessageTime = m.time
             lastMessageId = m.id
@@ -307,12 +323,14 @@ final class AppModel {
 
         let fresh = m.date >= launchTime.addingTimeInterval(-Self.notifyGrace)
         let muted = settings.isMuted(m.topic)
-        if fresh && !muted {
+        let notifies = notify && fresh && !muted
+        if notifies {
             let sound = settings.soundForAll
+            let soundClass = settings.topic(m.topic)?.sound
             let auth = m.thumbnailURL.flatMap(authorization(for:))
-            Task { await Notifier.post(m, soundForAll: sound, authorization: auth) }
+            Task { await Notifier.post(m, soundForAll: sound, soundClass: soundClass, authorization: auth) }
         }
-        Log.write("message: id=\(m.id) topic=\(m.topic) notified=\(fresh && !muted)")
+        Log.write("message: id=\(m.id) topic=\(m.topic) notified=\(notifies)")
         scheduleSave()
     }
 

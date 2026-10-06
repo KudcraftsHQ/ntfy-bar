@@ -149,12 +149,17 @@ struct MenuView: View {
                 Segment(title: "All", count: model.entries.filter(isNew).count, selected: filter == nil) {
                     filter = nil
                 }
-                ForEach(chipTopics, id: \.self) { topic in
-                    Segment(title: topic,
-                            count: model.entries.filter { $0.message.topic == topic && isNew($0) }.count,
-                            selected: filter == topic,
-                            muted: model.settings.isMuted(topic)) {
-                        filter = filter == topic ? nil : topic
+                ForEach(model.settings.groupedByApp(chipTopics)) { group in
+                    if let label = group.label {
+                        AppGroupLabel(name: label, icon: group.icon.flatMap(URL.init(string:)))
+                    }
+                    ForEach(group.topics, id: \.self) { topic in
+                        Segment(title: model.settings.label(for: topic),
+                                count: model.entries.filter { $0.message.topic == topic && isNew($0) }.count,
+                                selected: filter == topic,
+                                muted: model.settings.isMuted(topic)) {
+                            filter = filter == topic ? nil : topic
+                        }
                     }
                 }
             }
@@ -209,7 +214,9 @@ struct MenuView: View {
                             ForEach(group.entries) { entry in
                                 MessageRow(
                                     entry: entry,
-                                    iconURL: entry.message.iconURL ?? topicIcons[entry.message.topic],
+                                    iconURL: entry.message.iconURL
+                                        ?? model.settings.topic(entry.message.topic)?.appIcon.flatMap(URL.init(string:))
+                                        ?? topicIcons[entry.message.topic],
                                     isNew: isNew(entry),
                                     expanded: expanded.contains(entry.id),
                                     now: context.date,

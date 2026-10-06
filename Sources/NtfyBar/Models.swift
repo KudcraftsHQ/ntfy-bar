@@ -82,6 +82,15 @@ struct TopicConfig: Codable, Hashable, Identifiable, Sendable {
     var muted: Bool = false
     /// Disabled: left out of the stream subscription entirely (history is kept).
     var enabled: Bool = true
+    // Catalog fields (see CatalogSync). `managed` = added by the catalog, removed when it drops out.
+    var managed: Bool?
+    var app: String?
+    var appName: String?
+    var appIcon: String?
+    /// Sound class: silent | default | alert | urgent.
+    var sound: String?
+    /// Catalog topic name; nil = show the topic id.
+    var displayName: String?
     var id: String { name }
 
     init(name: String, muted: Bool = false, enabled: Bool = true) {
@@ -90,12 +99,18 @@ struct TopicConfig: Codable, Hashable, Identifiable, Sendable {
         self.enabled = enabled
     }
 
-    // Settings saved before `enabled` existed must still decode (default: enabled).
+    // Settings saved before `enabled` / the catalog fields existed must still decode.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
         muted = try c.decodeIfPresent(Bool.self, forKey: .muted) ?? false
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        managed = try c.decodeIfPresent(Bool.self, forKey: .managed)
+        app = try c.decodeIfPresent(String.self, forKey: .app)
+        appName = try c.decodeIfPresent(String.self, forKey: .appName)
+        appIcon = try c.decodeIfPresent(String.self, forKey: .appIcon)
+        sound = try c.decodeIfPresent(String.self, forKey: .sound)
+        displayName = try c.decodeIfPresent(String.self, forKey: .displayName)
     }
 }
 
@@ -104,6 +119,10 @@ struct AppSettings: Codable, Equatable, Sendable {
     var username: String = ""
     var topics: [TopicConfig] = []
     var soundForAll: Bool = false
+    /// nil = on unless the server is ntfy.sh (see `isCatalogEnabled`).
+    var catalogEnabled: Bool?
+    /// The account sync topic from `/v1/catalog`; streamed, never listed.
+    var syncTopic: String?
 
     var topicNames: [String] { topics.map(\.name) }
     /// Topics actually subscribed to on the stream.
