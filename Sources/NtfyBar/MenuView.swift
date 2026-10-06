@@ -261,8 +261,8 @@ struct MenuView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: model.settings.isConfigured ? "bell" : "bell.slash")
-                .font(.system(size: 20, weight: .regular))
+            Image(nsImage: MascotGlyph.image(model.settings.isConfigured ? .idle : .asleep, size: 22))
+                .renderingMode(.template)
                 .foregroundStyle(.secondary)
                 .frame(width: 44, height: 44)
                 .background(Circle().fill(Color.primary.opacity(0.06)))

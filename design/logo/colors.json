@@ -1,0 +1,10 @@
+{
+  "source": "D2 — the tile wearing its badge, generated with GPT Image 2 (codex bridge)",
+  "note": "Sampled from the generated master. Round them before they go into design tokens.",
+  "palette": {
+    "tile": { "hex": "#FEF8E8", "role": "the character" },
+    "ink": { "hex": "#0A4F4D", "role": "eyes and mouth" },
+    "teal": { "hex": "#2A9483", "role": "background" },
+    "badge": { "hex": "#FC715D", "role": "notification badge only" }
+  }
+}
