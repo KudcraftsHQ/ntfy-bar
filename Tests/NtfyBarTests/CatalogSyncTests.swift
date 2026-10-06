@@ -77,6 +77,7 @@ final class CatalogSyncTests: XCTestCase {
         XCTAssertNil(s.catalogEnabled)
         XCTAssertNil(s.syncTopic)
         XCTAssertTrue(s.soundForAll)
+        XCTAssertTrue(s.showsUnreadCount)
     }
 
     func testNewSettingsRoundTrip() throws {

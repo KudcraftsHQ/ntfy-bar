@@ -132,6 +132,12 @@ struct SettingsView: View {
             }
 
             Section("General") {
+                Toggle("Show unread count in the menu bar", isOn: Binding(
+                    get: { model.settings.showsUnreadCount },
+                    set: { model.settings.showUnreadCount = $0 }
+                ))
+                Text("When off, only the badge dot on the icon shows there is something new.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Launch at login", isOn: Binding(
                     get: { loginStatus == .enabled || loginStatus == .requiresApproval },
                     set: { setLaunchAtLogin($0) }
