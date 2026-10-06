@@ -12,7 +12,7 @@ posts native macOS notifications.
 ## Features
 
 - **Menu bar only.** No Dock icon. The mascot fills in, wears its badge and shows a count when there are unread
-  messages, and closes its eyes when ntfy-bar isn't connected.
+  messages (the count can be turned off in Settings, leaving just the badge dot), and closes its eyes when ntfy-bar isn't connected.
 - **Live stream.** One long-lived JSON stream for all topics, with Basic auth or an access token.
 - **Nothing missed.** Reconnects resume from the last message you received. Backoff is exponential,
   capped at 60 s, and the app reconnects right away after wake or a network change.

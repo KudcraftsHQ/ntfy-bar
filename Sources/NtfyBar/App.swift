@@ -24,7 +24,7 @@ struct MenuBarLabel: View {
         let unread = model.unreadCount
         HStack(spacing: 2) {
             Image(nsImage: MascotGlyph.image(glyph(unread: unread)))
-            if unread > 0 { Text(unread > 99 ? "99+" : "\(unread)") }
+            if unread > 0 && model.settings.showsUnreadCount { Text(unread > 99 ? "99+" : "\(unread)") }
         }
     }
 

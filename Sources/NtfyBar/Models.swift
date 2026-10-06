@@ -123,6 +123,10 @@ struct AppSettings: Codable, Equatable, Sendable {
     var catalogEnabled: Bool?
     /// The account sync topic from `/v1/catalog`; streamed, never listed.
     var syncTopic: String?
+    /// nil = on. Off leaves only the mascot's badge dot in the menu bar.
+    var showUnreadCount: Bool?
+
+    var showsUnreadCount: Bool { showUnreadCount ?? true }
 
     var topicNames: [String] { topics.map(\.name) }
     /// Topics actually subscribed to on the stream.
