@@ -143,6 +143,12 @@ struct SettingsView: View {
                 if let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.red)
                 }
+                HStack {
+                    Text("Version \(Updater.version)").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Check for Updates…") { Updater.shared.checkForUpdates() }
+                        .disabled(!Updater.shared.isAvailable)
+                }
             }
         }
         .formStyle(.grouped)

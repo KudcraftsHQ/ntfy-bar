@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = notificationDelegate
         AppModel.shared.start()
+        Updater.shared.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

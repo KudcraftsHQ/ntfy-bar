@@ -23,3 +23,11 @@ jobs:
           ls build/ntfy-bar.app/Contents/Resources
           test -f build/ntfy-bar.app/Contents/Resources/kc_alert.caf
           test -f build/ntfy-bar.app/Contents/Resources/kc_urgent.caf
+          test -d build/ntfy-bar.app/Contents/Frameworks/Sparkle.framework
+          otool -l build/ntfy-bar.app/Contents/MacOS/ntfy-bar | grep -A2 LC_RPATH | grep -q '@executable_path/../Frameworks'
+          codesign --verify --deep --strict build/ntfy-bar.app
+          plutil -lint build/ntfy-bar.app/Contents/Info.plist
+      - name: Launch smoke test (dyld loads Sparkle from the bundle)
+        run: |
+          build/ntfy-bar.app/Contents/MacOS/ntfy-bar --snapshot "$RUNNER_TEMP/shot.png" --sample
+          test -s "$RUNNER_TEMP/shot.png"

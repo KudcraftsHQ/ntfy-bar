@@ -1,0 +1,90 @@
+name: Release
+
+# v* tag  -> build, sign (EdDSA), appcast, publish a GitHub Release with the zip + appcast.xml.
+# PR that touches the release path -> the same steps as a dry run (nothing is published).
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - build.sh
+      - scripts/**
+      - Package.swift
+      - Resources/Info.plist
+
+permissions:
+  contents: write
+
+env:
+  SPARKLE_VERSION: 2.10.0   # keep equal to the pin in Package.swift
+
+jobs:
+  release:
+    # Fork PRs get no secrets; nothing to dry-run there.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then V="${GITHUB_REF_NAME#v}"; else V="0.0.0-pr${{ github.event.pull_request.number }}"; fi
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "version $V"
+
+      - name: Build app
+        run: |
+          VERSION="$VERSION" ./build.sh --no-install
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/ntfy-bar.app/Contents/Info.plist)" = "$VERSION"
+          codesign -dv build/ntfy-bar.app 2>&1 | grep -E 'Signature|Identifier'
+
+      - name: Zip
+        run: |
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent build/ntfy-bar.app "dist/ntfy-bar-$VERSION.zip"
+          ls -la dist
+
+      - name: Sparkle tools
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          mkdir -p "$RUNNER_TEMP/sparkle" && tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle"
+          "$RUNNER_TEMP/sparkle/bin/sign_update" --help >/dev/null
+
+      - name: Sign update and write appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          test -n "$SPARKLE_ED_PRIVATE_KEY" || { echo "SPARKLE_ED_PRIVATE_KEY secret is missing"; exit 1; }
+          ATTRS="$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle/bin/sign_update" --ed-key-file - "dist/ntfy-bar-$VERSION.zip")"
+          scripts/appcast.sh "$VERSION" "dist/ntfy-bar-$VERSION.zip" "$ATTRS" > dist/appcast.xml
+          cat dist/appcast.xml
+
+      - name: Verify against the app's SUPublicEDKey
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet cryptography
+          "$RUNNER_TEMP/venv/bin/python" scripts/verify-update.py \
+            build/ntfy-bar.app/Contents/Info.plist dist/appcast.xml "dist/ntfy-bar-$VERSION.zip"
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "dist/ntfy-bar-$VERSION.zip" dist/appcast.xml \
+            --title "ntfy-bar $VERSION" --generate-notes $PRERELEASE
+
+      - name: Keep dry-run output
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntfy-bar-dry-run
+          path: dist/
+          retention-days: 3
