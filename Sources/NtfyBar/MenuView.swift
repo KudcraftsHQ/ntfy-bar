@@ -44,6 +44,7 @@ struct MenuView: View {
         VStack(spacing: 0) {
             header
             if model.needsSignIn { SignInBanner() }
+            UpdateBanner()
             if chipTopics.count > 1 { chips }
             Divider()
             content
@@ -106,8 +107,7 @@ struct MenuView: View {
                 Button("Clear All…") { confirmClear(topic: nil) }
                     .disabled(model.entries.isEmpty)
                 Divider()
-                Button("Check for Updates…") { Updater.shared.checkForUpdates() }
-                    .disabled(!Updater.shared.isAvailable)
+                UpdateMenuItem()
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 13))
