@@ -25,11 +25,15 @@ final class AppModel {
     var catalogError: String?
     @ObservationIgnored var catalogTask: Task<Void, Never>?
     @ObservationIgnored var catalogETag: String?
+    /// Credentials were rejected (401): stays set until a sign-in or a successful request.
+    var needsSignIn = false
+    @ObservationIgnored var suppressRestarts = false
 
     var settings: AppSettings {
         didSet {
             guard settings != oldValue, persistenceEnabled else { return }
             Storage.saveSettings(settings)
+            guard !suppressRestarts else { return }
             let connectionChanged = settings.serverURL != oldValue.serverURL
                 || settings.username != oldValue.username
                 || settings.streamTopicNames != oldValue.streamTopicNames
@@ -168,6 +172,8 @@ final class AppModel {
             Keychain.set(newToken, for: "token")
             hasToken = !newToken.isEmpty
         }
+        needsSignIn = false
+        if settings.syncTopic != nil { settings.syncTopic = nil }  // belongs to the previous account
         restartStream()
         restartCatalogSync(resetETag: true)
     }
@@ -221,6 +227,7 @@ final class AppModel {
                 attempt += 1
                 status = .authError(retryAt: Date().addingTimeInterval(backoff()))
                 Log.write("stream: auth error HTTP \(code)")
+                handleStreamAuthFailure(code)
             } catch {
                 if Task.isCancelled { return }
                 attempt += 1
@@ -291,6 +298,7 @@ final class AppModel {
             case "open":
                 attempt = 0
                 status = .connected
+                needsSignIn = false
                 Log.write("stream: open")
                 restartCatalogSync()
             case "keepalive":
@@ -305,12 +313,13 @@ final class AppModel {
 
     // MARK: Messages
 
+    /// `notify: false` is catalog backfill: listed, never notified, and the stream cursor stays put.
     func ingest(_ m: NtfyMessage, notify: Bool = true) {
         if m.topic == settings.syncTopic {
-            if CatalogSync.isSyncSignal(m.message) { restartCatalogSync(resetETag: true) }
+            if CatalogSync.isSyncSignal(m.message) { restartCatalogSync() }
             return
         }
-        if m.time >= (lastMessageTime ?? 0) {
+        if notify && m.time >= (lastMessageTime ?? 0) {
             lastMessageTime = m.time
             lastMessageId = m.id
         }

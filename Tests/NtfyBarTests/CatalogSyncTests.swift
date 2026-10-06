@@ -165,6 +165,39 @@ final class CatalogSyncTests: XCTestCase {
 
         let dropped = CatalogSync.reconcile(current: result, catalog: catalog([]))
         XCTAssertEqual(dropped.map(\.name), ["facemap-orders"])
+        // Leaving the catalog clears its metadata (same as Windows); the user's choices stay.
+        XCTAssertEqual(dropped[0], TopicConfig(name: "facemap-orders", muted: true))
+    }
+
+    /// Shared parity case (mirrored in ntfy-bar-windows' Core tests): one catalog, one settings
+    /// list, one expected result for both clients.
+    func testReconcileParityCase() {
+        var managedGone = TopicConfig(name: "kudtrading-old", muted: true)
+        managedGone.managed = true
+        var decoratedGone = TopicConfig(name: "typemap", enabled: false)
+        decoratedGone.app = "typemap"
+        decoratedGone.appName = "TypeMap"
+        decoratedGone.sound = "alert"
+        let current = [TopicConfig(name: "mine"), managedGone, decoratedGone]
+        let app = Catalog.AppEntry(id: "kudtrading", name: "Kudtrading", icon: nil, sound: "loud",
+                                   topics: [Catalog.TopicEntry(topic: "kudtrading", name: "", sound: nil),
+                                            Catalog.TopicEntry(topic: "kudtrading-x", sound: "bogus")])
+        let result = CatalogSync.reconcile(current: current, catalog: catalog([app]))
+
+        XCTAssertEqual(result.map(\.name), ["mine", "typemap", "kudtrading", "kudtrading-x"])
+        XCTAssertEqual(result[0], TopicConfig(name: "mine"))
+        XCTAssertEqual(result[1], TopicConfig(name: "typemap", enabled: false), "metadata cleared, choices kept")
+        XCTAssertEqual(result[2].managed, true)
+        XCTAssertNil(result[2].displayName)
+        XCTAssertEqual(result[2].sound, "default", "unknown app sound normalised")
+        XCTAssertEqual(result[3].sound, "default", "unknown topic sound normalised")
+    }
+
+    func testNormalizedSound() {
+        XCTAssertEqual(CatalogSync.normalizedSound("urgent"), "urgent")
+        XCTAssertEqual(CatalogSync.normalizedSound("silent"), "silent")
+        XCTAssertEqual(CatalogSync.normalizedSound("LOUD"), "default")
+        XCTAssertEqual(CatalogSync.normalizedSound(nil), "default")
     }
 
     func testReconcileKeepsOrderAndAppendsNewInCatalogOrder() {
@@ -253,6 +286,13 @@ final class CatalogSyncTests: XCTestCase {
         let messages = CatalogSync.parseMessages(Data(body.utf8))
         XCTAssertEqual(messages.map(\.id), ["a1", "a2"])
         XCTAssertEqual(messages[1].priority, 5)
+    }
+
+    func testTokenRequestNeverExpires() throws {
+        let body = CatalogSync.tokenRequestBody(label: #"ntfy-bar-"quoted"\mac"#)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(object["expires"] as? Int, 0, "without expires:0 the server defaults to 72 h")
+        XCTAssertEqual(object["label"] as? String, #"ntfy-bar-"quoted"\mac"#)
     }
 
     func testParseToken() {

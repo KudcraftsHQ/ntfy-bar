@@ -30,6 +30,7 @@ extension AppModel {
             try Task.checkCancellation()
             lastCatalogSync = Date()
             catalogError = nil
+            needsSignIn = false
             guard let catalog else { return }  // 304: nothing changed
 
             let known = Set(settings.topicNames)
@@ -59,15 +60,35 @@ extension AppModel {
             return
         } catch CatalogSync.FetchError.unauthorized(let code) {
             guard !Task.isCancelled else { return }
-            catalogError = "Not authorized (HTTP \(code)). Sign in again."
-            status = .authError(retryAt: Date().addingTimeInterval(15 * 60))
             Log.write("catalog: auth error HTTP \(code)")
+            if code == 401 {
+                catalogError = "Your sign-in is no longer valid. Sign in again."
+                status = .authError(retryAt: Date().addingTimeInterval(15 * 60))
+                markNeedsSignIn()
+            } else {
+                catalogError = "Not allowed to read the catalog (HTTP \(code))."
+            }
         } catch {
             guard !Task.isCancelled else { return }
             if (error as? URLError)?.code == .cancelled { return }
             catalogError = (error as? CatalogSync.FetchError)?.description ?? error.localizedDescription
             Log.write("catalog: error: \(catalogError ?? "")")
         }
+    }
+
+    /// 401 = the token/password is no longer accepted (revoked, user deleted): ask to sign in again.
+    /// 403 = some topic in the stream is no longer readable; a catalog sync drops it.
+    func handleStreamAuthFailure(_ code: Int) {
+        if code == 401 { markNeedsSignIn() } else { restartCatalogSync() }
+    }
+
+    /// Sticky until a sign-in or a successful request (a keepalive can't clear it), and opens
+    /// Settings once when it first happens.
+    func markNeedsSignIn() {
+        guard !needsSignIn else { return }
+        needsSignIn = true
+        Log.write("auth: credentials rejected, asking to sign in again")
+        SettingsWindowController.shared.show()
     }
 
     /// Exchanges username + password for a per-device token, then forgets the password.
@@ -79,7 +100,12 @@ extension AppModel {
         var next = settings
         next.serverURL = server.trimmingCharacters(in: .whitespacesAndNewlines)
         next.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        next.syncTopic = nil  // the previous account's
+        // Apply server + user without restarting anything, so no request ever pairs the old
+        // credentials with the new server; updateCredentials then restarts stream and catalog once.
+        suppressRestarts = true
         settings = next
+        suppressRestarts = false
         updateCredentials(password: "", token: token)
         Log.write("catalog: signed in, token label=\(label)")
     }

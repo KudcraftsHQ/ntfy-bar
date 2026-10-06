@@ -45,3 +45,22 @@ struct AppGroupLabel: View {
         }
     }
 }
+
+/// Shown in the popover while the server rejects our credentials (revoked token, deleted user).
+struct SignInBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .foregroundStyle(.orange)
+            Text("Signed out. Sign in again to keep receiving messages.")
+                .font(.system(size: 11.5))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button("Sign In…") { SettingsWindowController.shared.show() }
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.08))
+    }
+}

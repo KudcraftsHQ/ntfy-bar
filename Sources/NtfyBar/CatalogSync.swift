@@ -181,13 +181,24 @@ enum CatalogSync {
         request.setValue("Basic \(Data("\(username):\(password)".utf8).base64EncodedString())",
                          forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["label": label])
+        request.httpBody = tokenRequestBody(label: label)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw FetchError.badResponse }
         if http.statusCode == 401 || http.statusCode == 403 { throw FetchError.unauthorized(http.statusCode) }
         guard (200..<300).contains(http.statusCode) else { throw FetchError.http(http.statusCode) }
         guard let token = parseToken(data) else { throw FetchError.badResponse }
         return token
+    }
+
+    /// `expires: 0` = never. Without it the server defaults to 72 h and the Mac goes dark on day 3.
+    /// The token is per device and revocable in the web app (Account › Access tokens).
+    static func tokenRequestBody(label: String) -> Data {
+        Data(#"{"label":\#(jsonString(label)),"expires":0}"#.utf8)
+    }
+
+    private static func jsonString(_ s: String) -> String {
+        let data = (try? JSONEncoder().encode(s)) ?? Data("\"\"".utf8)
+        return String(decoding: data, as: UTF8.self)
     }
 
     static func parseToken(_ data: Data) -> String? {
@@ -260,6 +271,8 @@ enum CatalogSync {
             } else if config.managed == true {
                 continue
             } else {
+                // Not (or no longer) in the catalog: the user's own topic, without catalog metadata.
+                clearCatalogFields(&config)
                 result.append(config)
                 present.insert(config.name)
             }
@@ -279,8 +292,21 @@ enum CatalogSync {
         config.app = app.id
         config.appName = app.name
         config.appIcon = app.icon
-        config.sound = topic.sound ?? app.sound ?? SoundClass.default.rawValue
-        config.displayName = topic.name
+        config.sound = normalizedSound(topic.sound ?? app.sound)
+        config.displayName = topic.name.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    private static func clearCatalogFields(_ config: inout TopicConfig) {
+        config.app = nil
+        config.appName = nil
+        config.appIcon = nil
+        config.sound = nil
+        config.displayName = nil
+    }
+
+    /// Unknown or missing classes become `default`, so every catalog topic has a playable class.
+    static func normalizedSound(_ raw: String?) -> String {
+        raw.flatMap(SoundClass.init(rawValue:))?.rawValue ?? SoundClass.default.rawValue
     }
 
     // MARK: Sync signal

@@ -48,6 +48,9 @@ struct SettingsView: View {
                 HStack {
                     if let signInError {
                         Text(signInError).font(.caption).foregroundStyle(.red)
+                    } else if model.needsSignIn {
+                        Text("Your sign-in is no longer valid. Enter your password and Sign In again.")
+                            .font(.caption).foregroundStyle(.red)
                     }
                     Spacer()
                     Button(signingIn ? "Signing In…" : "Sign In", action: signIn)

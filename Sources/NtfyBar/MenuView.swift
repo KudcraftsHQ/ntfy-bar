@@ -43,6 +43,7 @@ struct MenuView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if model.needsSignIn { SignInBanner() }
             if chipTopics.count > 1 { chips }
             Divider()
             content

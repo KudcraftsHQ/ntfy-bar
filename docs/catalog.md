@@ -6,8 +6,10 @@ read without you adding any by hand. On stock ntfy the catalog endpoint returns 
 ## Sign in
 
 Settings › Server: enter the server URL, username and password, then **Sign In**. ntfy-bar calls
-`POST /v1/account/token` with label `ntfy-bar-<computer name>`, stores the token in the Keychain and
-deletes the password. Revoke it from the web app (Account › Access tokens).
+`POST /v1/account/token` with label `ntfy-bar-<computer name>` and `expires: 0` (never expires),
+stores the token in the Keychain and deletes the password. Revoke it from the web app
+(Account › Access tokens). When the server answers 401 (token revoked, user deleted), the popover
+shows "Signed out" and Settings opens once, asking you to sign in again.
 
 ## Sync
 
@@ -20,6 +22,7 @@ Reconcile rules (only on HTTP 200):
 - A topic the catalog lists and you don't have is added, **synced**, on and unmuted, and its last 7 days are
   loaded into the list without notifying.
 - A topic you already have gets the catalog's app, icon, name and sound; your on/off and mute stay.
+  If the catalog stops listing a topic you added yourself, it stays, without that metadata.
 - A synced topic the catalog stops listing (access revoked, topic deleted) is removed.
 - Topics the catalog doesn't know are left alone.
 
@@ -35,7 +38,7 @@ Settings › Catalog › "Sync topics from the server" (default: on, except for 
 | `alert` | `kc_alert.caf` |
 | `urgent` | `kc_urgent.caf`, time-sensitive |
 
-Priority 1–2 messages are always quiet. Topics the catalog doesn't know keep the old rule (sound for
+Unknown classes are treated as `default`. Priority 1–2 messages are always quiet. Topics the catalog doesn't know keep the old rule (sound for
 priority 4–5, or for everything with "Play sound for every message"). The two `.caf` files are
 placeholders synthesized with ffmpeg; replace them in `Sources/NtfyBar/Resources/Sounds/`.
 Time-sensitive delivery needs an entitlement that ad-hoc builds lack, so macOS may treat urgent like alert.
