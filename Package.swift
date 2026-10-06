@@ -14,6 +14,13 @@ let package = Package(
         .executableTarget(
             name: "NtfyBar",
             dependencies: ["KeychainShim"],
+            // Notification sounds; build.sh copies them into Contents/Resources (UNNotificationSound looks there).
+            resources: [.copy("Resources/Sounds")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "NtfyBarTests",
+            dependencies: ["NtfyBar"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

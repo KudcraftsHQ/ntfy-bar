@@ -17,6 +17,8 @@ struct SettingsView: View {
     @State private var loginStatus = SMAppService.mainApp.status
     @State private var loginError: String?
     @State private var pendingRemoval: String?
+    @State private var signingIn = false
+    @State private var signInError: String?
 
     private var connectionDirty: Bool {
         server != model.settings.serverURL || username != model.settings.username
@@ -43,10 +45,48 @@ struct SettingsView: View {
                         .keyboardShortcut(.defaultAction)
                         .disabled(!connectionDirty)
                 }
+                HStack {
+                    if let signInError {
+                        Text(signInError).font(.caption).foregroundStyle(.red)
+                    } else if model.needsSignIn {
+                        Text("Your sign-in is no longer valid. Enter your password and Sign In again.")
+                            .font(.caption).foregroundStyle(.red)
+                    }
+                    Spacer()
+                    Button(signingIn ? "Signing In…" : "Sign In", action: signIn)
+                        .disabled(signingIn || CatalogSync.normalizedBase(server) == nil
+                                  || username.isEmpty || password.isEmpty)
+                        .help("Swaps the password for a token for this Mac, then forgets the password")
+                }
             } header: {
                 Text("Server")
             } footer: {
-                Text("Password and token are stored in the Keychain. Leave a field empty to keep the saved value.")
+                Text("Password and token are stored in the Keychain. Leave a field empty to keep the saved value. Sign In creates an access token for this Mac and keeps only the token.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Sync topics from the server", isOn: Binding(
+                    get: { model.settings.isCatalogEnabled },
+                    set: { model.settings.catalogEnabled = $0 }
+                ))
+                if model.settings.isCatalogEnabled {
+                    HStack {
+                        Text(model.lastCatalogSync.map { "Last synced \($0.formatted(date: .omitted, time: .shortened))" }
+                             ?? "Not synced yet")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Sync Now") { model.restartCatalogSync(resetETag: true) }
+                            .disabled(!model.hasToken && !model.hasPassword)
+                    }
+                    if let error = model.catalogError {
+                        Text(error).font(.caption).foregroundStyle(.red)
+                    }
+                }
+            } header: {
+                Text("Catalog")
+            } footer: {
+                Text("Every topic you can read on the server is added automatically, grouped by app. Synced topics can be turned off or muted, not removed.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -157,6 +197,24 @@ struct SettingsView: View {
         token = ""
     }
 
+    private func signIn() {
+        signingIn = true
+        signInError = nil
+        Task {
+            do {
+                try await model.signIn(server: server, username: username, password: password)
+                server = model.settings.serverURL
+                username = model.settings.username
+                password = ""
+                token = ""
+            } catch {
+                signInError = (error as? CatalogSync.FetchError).map { "Sign in failed: \($0.description)" }
+                    ?? "Sign in failed: \(error.localizedDescription)"
+            }
+            signingIn = false
+        }
+    }
+
     private func addTopic() {
         let name = newTopic.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -198,19 +256,29 @@ private struct TopicRow: View {
                 .controlSize(.mini)
                 .labelsHidden()
                 .help(topic.enabled ? "Subscribed — turn off to pause this topic" : "Off — not subscribed")
-            Text(topic.name)
-                .foregroundStyle(topic.enabled ? .primary : .tertiary)
-            Spacer()
-            Menu {
-                Button("Remove \(topic.name)…", role: .destructive, action: requestRemoval)
-            } label: {
-                Image(systemName: "ellipsis.circle")
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(topic.displayName ?? topic.name)
+                        .foregroundStyle(topic.enabled ? .primary : .tertiary)
+                    if isManaged { ManagedBadge() }
+                }
+                if let subtitle {
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .opacity(hovering ? 1 : 0)
-            .help("More")
+            Spacer()
+            if !isManaged {
+                Menu {
+                    Button("Remove \(topic.name)…", role: .destructive, action: requestRemoval)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .opacity(hovering ? 1 : 0)
+                .help("More")
+            }
             Toggle(isOn: $topic.muted) {
                 Image(systemName: topic.muted ? "bell.slash" : "bell")
             }
@@ -225,8 +293,19 @@ private struct TopicRow: View {
         .contextMenu {
             Button(topic.enabled ? "Turn Off" : "Turn On") { topic.enabled.toggle() }
             Button(topic.muted ? "Unmute" : "Mute") { topic.muted.toggle() }
-            Divider()
-            Button("Remove \(topic.name)…", role: .destructive, action: requestRemoval)
+            if !isManaged {
+                Divider()
+                Button("Remove \(topic.name)…", role: .destructive, action: requestRemoval)
+            }
         }
+    }
+
+    /// Synced from the catalog: can be turned off or muted, never removed (it would come back).
+    private var isManaged: Bool { topic.managed == true }
+
+    /// "FaceMap · facemap-orders": the app, plus the topic id when a display name hides it.
+    private var subtitle: String? {
+        let parts = [topic.appName, topic.displayName == nil ? nil : topic.name].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
