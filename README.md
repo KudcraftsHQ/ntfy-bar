@@ -51,8 +51,10 @@ Or from Terminal: `xattr -dr com.apple.quarantine ~/Applications/ntfy-bar.app`.
 ### Updates
 
 ntfy-bar updates itself with [Sparkle](https://sparkle-project.org). It checks once a day,
-downloads new versions in the background and installs them when the app quits (or when you
-choose **Check for Updates…** in the popover's ⋯ menu or in Settings). Updates are verified
+downloads new versions in the background and installs them when the app quits. A menu bar app
+is rarely quit, so once an update is downloaded the popover shows a **Restart to Update** strip,
+and the same button sits in the ⋯ menu and in Settings › General. **Check for Updates…** in
+either place checks right away. Updates are verified
 with an EdDSA signature, and Sparkle clears the quarantine flag on them, so the Gatekeeper step
 is only needed for the first install.
 
@@ -159,6 +161,7 @@ Sources/NtfyBar/
   Storage.swift       state file, settings, ntfy CLI config importer
   Snapshot.swift      renders the popover to PNG (screenshots)
   Updater.swift       Sparkle updater (feed and public key in Resources/Info.plist)
+  UpdateViews.swift   update banner, menu item and Settings row
 Sources/KeychainShim/ C shim for the Keychain access list
 scripts/make-icon.py  regenerates Resources/AppIcon.icns from design/logo (needs Pillow)
 ```
