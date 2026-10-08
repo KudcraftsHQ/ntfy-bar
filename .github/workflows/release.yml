@@ -1,10 +1,17 @@
 name: Release
 
-# v* tag  -> build, sign (EdDSA), appcast, publish a GitHub Release with the zip + appcast.xml.
+# push to main -> next version (patch bump of the newest v* tag; "[minor]" / "[major]" in the
+#                 head commit message bumps that instead), then the same as a v* tag.
+# v* tag        -> build, sign (EdDSA), appcast, publish a GitHub Release with the zip + appcast.xml.
 # PR that touches the release path -> the same steps as a dry run (nothing is published).
 on:
   push:
+    branches: [main]
     tags: ['v*']
+    paths-ignore:
+      - '**.md'
+      - docs/**
+      - LICENSE
   pull_request:
     paths:
       - .github/workflows/release.yml
@@ -15,6 +22,11 @@ on:
 
 permissions:
   contents: write
+
+# One release at a time, in push order, so two quick merges can't pick the same version.
+concurrency:
+  group: release-${{ github.event_name }}
+  cancel-in-progress: false
 
 env:
   SPARKLE_VERSION: 2.10.0   # keep equal to the pin in Package.swift
@@ -31,24 +43,46 @@ jobs:
           fetch-depth: 0
 
       - name: Version
+        env:
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = push ]; then V="${GITHUB_REF_NAME#v}"; else V="0.0.0-pr${{ github.event.pull_request.number }}"; fi
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            V="${GITHUB_REF_NAME#v}"
+          elif [ "$GITHUB_EVENT_NAME" = push ]; then
+            if [ -n "$(git tag --points-at HEAD 'v*')" ]; then
+              echo "HEAD is already released as $(git tag --points-at HEAD 'v*')"; echo "SKIP=1" >> "$GITHUB_ENV"; exit 0
+            fi
+            LAST="$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+            IFS=. read -r MA MI PA <<< "${LAST#v}"
+            MA="${MA:-0}" MI="${MI:-0}" PA="${PA:-0}"
+            case "$HEAD_MESSAGE" in
+              *'[major]'*) V="$((MA + 1)).0.0" ;;
+              *'[minor]'*) V="$MA.$((MI + 1)).0" ;;
+              *)           V="$MA.$MI.$((PA + 1))" ;;
+            esac
+          else
+            V="0.0.0-pr${{ github.event.pull_request.number }}"
+          fi
           echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "TAG=v$V" >> "$GITHUB_ENV"
           echo "version $V"
 
       - name: Build app
+        if: env.SKIP != '1'
         run: |
           VERSION="$VERSION" ./build.sh --no-install
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/ntfy-bar.app/Contents/Info.plist)" = "$VERSION"
           codesign -dv build/ntfy-bar.app 2>&1 | grep -E 'Signature|Identifier'
 
       - name: Zip
+        if: env.SKIP != '1'
         run: |
           mkdir -p dist
           ditto -c -k --sequesterRsrc --keepParent build/ntfy-bar.app "dist/ntfy-bar-$VERSION.zip"
           ls -la dist
 
       - name: Sparkle tools
+        if: env.SKIP != '1'
         run: |
           curl -fsSL -o "$RUNNER_TEMP/sparkle.tar.xz" \
             "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
@@ -56,6 +90,7 @@ jobs:
           "$RUNNER_TEMP/sparkle/bin/sign_update" --help >/dev/null
 
       - name: Sign update and write appcast
+        if: env.SKIP != '1'
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
@@ -65,6 +100,7 @@ jobs:
           cat dist/appcast.xml
 
       - name: Verify against the app's SUPublicEDKey
+        if: env.SKIP != '1'
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --quiet cryptography
@@ -72,13 +108,14 @@ jobs:
             build/ntfy-bar.app/Contents/Info.plist dist/appcast.xml "dist/ntfy-bar-$VERSION.zip"
 
       - name: Publish GitHub Release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && env.SKIP != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           PRERELEASE=""
           case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" "dist/ntfy-bar-$VERSION.zip" dist/appcast.xml \
+          # On a main push the tag doesn't exist yet; --target creates it at this commit.
+          gh release create "$TAG" "dist/ntfy-bar-$VERSION.zip" dist/appcast.xml --target "$GITHUB_SHA" \
             --title "ntfy-bar $VERSION" --generate-notes $PRERELEASE
 
       - name: Keep dry-run output

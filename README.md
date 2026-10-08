@@ -176,7 +176,10 @@ build/ntfy-bar.app/Contents/MacOS/ntfy-bar --snapshot docs/popover-dark.png --sa
 
 ## Releasing
 
-Push a tag: `git tag v1.2.0 && git push origin v1.2.0`. The `Release` workflow builds the app with
+Every push to `main` (except docs-only changes) is released automatically: the next version is a
+patch bump of the newest `v*` tag, or a minor/major bump when the head commit message (for a merged
+PR, its merge commit) contains `[minor]` or `[major]`. Pushing a tag by hand still works:
+`git tag v1.2.0 && git push origin v1.2.0`. The `Release` workflow builds the app with
 that version, zips it, signs the zip with the EdDSA key in the `SPARKLE_ED_PRIVATE_KEY` secret,
 writes `appcast.xml`, checks the signature against `SUPublicEDKey` in the built app, and publishes
 both files as a GitHub Release. The feed URL is
