@@ -144,7 +144,8 @@ enum SoundTheme: String, CaseIterable, Sendable {
         sound == .silent ? nil : "kc_\(rawValue)_\(sound.rawValue)"
     }
 
-    /// Bundled file under `Contents/Resources` (where `UNNotificationSound(named:)` looks).
+    /// Bundled file under `Contents/Resources`; `SoundInstaller` copies it to `~/Library/Sounds`,
+    /// where `UNNotificationSound(named:)` finds it.
     func fileName(_ sound: SoundClass) -> String? {
         clipName(sound).map { $0 + ".caf" }
     }
