@@ -33,7 +33,8 @@ Settings › Catalog › "Sync topics from the server" (default: on, except for 
 
 Every catalog topic has a sound class, and every class has a clip in each of ten bundled themes
 (`Sources/NtfyBar/Resources/Sounds/kc_<theme>_<sound>.caf`, 70 clips; `build.sh` copies them into
-`Contents/Resources`, where `UNNotificationSound(named:)` finds them).
+`Contents/Resources`, and the app copies them to `~/Library/Sounds` on launch, where
+`UNNotificationSound(named:)` finds them).
 
 | Class | Meaning |
 |---|---|

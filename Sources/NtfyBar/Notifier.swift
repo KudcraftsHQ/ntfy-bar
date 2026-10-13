@@ -99,3 +99,47 @@ enum SoundPreview {
         clip.play()
     }
 }
+
+/// Copies the bundled clips into `~/Library/Sounds`. Notification Center resolves
+/// `UNNotificationSound(named:)` there reliably; it does not always find them in the app bundle
+/// (it then plays a built-in sound instead), and it remembers a miss until it restarts.
+enum SoundInstaller {
+    static var userSounds: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Sounds", isDirectory: true)
+    }
+
+    /// Runs off the main thread; a failure only costs the themed sound.
+    static func installBundledClips() {
+        guard let resources = Bundle.main.resourceURL else { return }
+        let destination = userSounds
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                let copied = try install(from: resources, to: destination)
+                if copied > 0 { Log.write("sounds: installed \(copied) clips to ~/Library/Sounds") }
+            } catch {
+                Log.write("sounds: install failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Copies every `kc_*.caf` in `source` that `destination` lacks or holds a different version of.
+    /// Returns how many were written.
+    @discardableResult
+    static func install(from source: URL, to destination: URL) throws -> Int {
+        let fm = FileManager.default
+        try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        let clips = try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "caf" && $0.lastPathComponent.hasPrefix("kc_") }
+        var copied = 0
+        for clip in clips {
+            let target = destination.appendingPathComponent(clip.lastPathComponent)
+            if fm.fileExists(atPath: target.path) {
+                if fm.contentsEqual(atPath: clip.path, andPath: target.path) { continue }
+                try fm.removeItem(at: target)
+            }
+            try fm.copyItem(at: clip, to: target)
+            copied += 1
+        }
+        return copied
+    }
+}

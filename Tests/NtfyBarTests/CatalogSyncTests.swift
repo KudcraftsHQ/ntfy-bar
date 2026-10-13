@@ -388,4 +388,27 @@ final class CatalogSyncTests: XCTestCase {
         XCTAssertEqual(s.label(for: "facemap-alerts"), "facemap-alerts")
         XCTAssertEqual(s.label(for: "unknown"), "unknown")
     }
+
+    // MARK: Sound install
+
+    func testSoundInstallCopiesMissingAndChangedClipsOnly() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("ntfy-bar-tests-\(UUID().uuidString)")
+        let source = root.appendingPathComponent("Resources"), destination = root.appendingPathComponent("Sounds")
+        try fm.createDirectory(at: source, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        try Data("a".utf8).write(to: source.appendingPathComponent("kc_cabin_default.caf"))
+        try Data("b".utf8).write(to: source.appendingPathComponent("kc_cabin_alert.caf"))
+        try Data("x".utf8).write(to: source.appendingPathComponent("AppIcon.icns"))
+        try Data("y".utf8).write(to: source.appendingPathComponent("other.caf"))
+
+        XCTAssertEqual(try SoundInstaller.install(from: source, to: destination), 2)
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: destination.path).sorted(),
+                       ["kc_cabin_alert.caf", "kc_cabin_default.caf"])
+        XCTAssertEqual(try SoundInstaller.install(from: source, to: destination), 0)
+
+        try Data("stale".utf8).write(to: destination.appendingPathComponent("kc_cabin_alert.caf"))
+        XCTAssertEqual(try SoundInstaller.install(from: source, to: destination), 1)
+        XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("kc_cabin_alert.caf")), Data("b".utf8))
+    }
 }
