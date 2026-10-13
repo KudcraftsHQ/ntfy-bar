@@ -94,6 +94,7 @@ Open **Settings…** from the popover (⌘,):
 | Access token | Optional. Sent as `Bearer` and takes precedence over the password |
 | Topics | Add topics. Each one has an **on/off** switch (off = not subscribed) and a **mute** toggle (listed, but no notification). Remove a topic from its context menu; you'll be asked to confirm |
 | Play sound for every message | By default only priority 4–5 messages play a sound |
+| Sound theme | Which of the ten bundled themes catalog topics play. "Follow server" uses the server's theme; picking one applies to this Mac only. The buttons below it preview each sound |
 | Launch at login | May require approval in System Settings › General › Login Items |
 
 ### First-run import

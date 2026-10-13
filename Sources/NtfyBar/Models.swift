@@ -87,7 +87,7 @@ struct TopicConfig: Codable, Hashable, Identifiable, Sendable {
     var app: String?
     var appName: String?
     var appIcon: String?
-    /// Sound class: silent | default | alert | urgent.
+    /// Sound class: silent | default | alert | urgent | cash | done | fail | ask.
     var sound: String?
     /// Catalog topic name; nil = show the topic id.
     var displayName: String?
@@ -125,8 +125,14 @@ struct AppSettings: Codable, Equatable, Sendable {
     var syncTopic: String?
     /// nil = on. Off leaves only the mascot's badge dot in the menu bar.
     var showUnreadCount: Bool?
+    /// This Mac's sound theme; nil = follow the server.
+    var soundTheme: String?
+    /// The `sound_theme` of the last catalog; nil from a server that predates themes.
+    var serverSoundTheme: String?
 
     var showsUnreadCount: Bool { showUnreadCount ?? true }
+    /// The theme notifications play: this Mac's override, else the server's, else `cabin`.
+    var effectiveSoundTheme: SoundTheme { SoundTheme.resolve(device: soundTheme, server: serverSoundTheme) }
 
     var topicNames: [String] { topics.map(\.name) }
     /// Topics actually subscribed to on the stream.

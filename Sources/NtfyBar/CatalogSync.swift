@@ -9,6 +9,8 @@ struct Catalog: Decodable, Equatable, Sendable {
     var baseURL: String?
     var historyDays: Int?
     var syncTopic: String?
+    /// Server-wide sound theme; nil from a server that predates themes (which means `cabin`).
+    var soundTheme: String?
     var apps: [AppEntry]
 
     struct AppEntry: Decodable, Equatable, Sendable {
@@ -70,13 +72,16 @@ struct Catalog: Decodable, Equatable, Sendable {
         case baseURL = "base_url"
         case historyDays = "history_days"
         case syncTopic = "sync_topic"
+        case soundTheme = "sound_theme"
     }
 
-    init(version: Int64 = 0, baseURL: String? = nil, historyDays: Int? = nil, syncTopic: String? = nil, apps: [AppEntry]) {
+    init(version: Int64 = 0, baseURL: String? = nil, historyDays: Int? = nil, syncTopic: String? = nil,
+         soundTheme: String? = nil, apps: [AppEntry]) {
         self.version = version
         self.baseURL = baseURL
         self.historyDays = historyDays
         self.syncTopic = syncTopic
+        self.soundTheme = soundTheme
         self.apps = apps
     }
 
@@ -86,21 +91,62 @@ struct Catalog: Decodable, Equatable, Sendable {
         baseURL = try c.decodeIfPresent(String.self, forKey: .baseURL)
         historyDays = try c.decodeIfPresent(Int.self, forKey: .historyDays)
         syncTopic = (try c.decodeIfPresent(String.self, forKey: .syncTopic)).flatMap { $0.isEmpty ? nil : $0 }
+        soundTheme = (try c.decodeIfPresent(String.self, forKey: .soundTheme)).flatMap { $0.isEmpty ? nil : $0 }
         apps = try c.decodeIfPresent([AppEntry].self, forKey: .apps) ?? []
     }
 }
 
-/// The four portable sound classes (spec D9).
+/// The portable sound classes (spec D9, extended by the sound-themes contract).
 enum SoundClass: String, CaseIterable, Sendable {
-    case silent, `default`, alert, urgent
+    case silent, `default`, alert, urgent, cash, done, fail, ask
 
-    /// Bundled file under `Contents/Resources`, for the classes that have one.
-    var fileName: String? {
+    /// The classes that have a clip in every theme (everything but `silent`).
+    static let clips: [SoundClass] = allCases.filter { $0 != .silent }
+
+    var label: String { rawValue.capitalized }
+
+    var meaning: String {
         switch self {
-        case .alert: "kc_alert.caf"
-        case .urgent: "kc_urgent.caf"
-        case .silent, .default: nil
+        case .silent: "No sound"
+        case .default: "Ordinary message"
+        case .alert: "Look at this soon"
+        case .urgent: "Prod broken, money at risk"
+        case .cash: "Order paid"
+        case .done: "Job or agent finished"
+        case .fail: "Build, deploy or job failed"
+        case .ask: "An agent needs your answer"
         }
+    }
+}
+
+/// The ten bundled sound themes. Every theme has one clip per `SoundClass.clips` entry.
+enum SoundTheme: String, CaseIterable, Sendable {
+    case wood, glass, soft, chip, pluck, keys, space, cabin, cockpit, terminal
+
+    /// Used when neither this Mac nor the server names a (known) theme.
+    static let fallback = SoundTheme.cabin
+
+    var label: String { rawValue.capitalized }
+
+    /// What the server asks for: its `sound_theme`, or `cabin` when missing (older server) or unknown.
+    static func server(_ raw: String?) -> SoundTheme {
+        raw.flatMap(SoundTheme.init(rawValue:)) ?? fallback
+    }
+
+    /// This Mac's override if set, else the server's theme, else `cabin`. An unknown name is `cabin`.
+    static func resolve(device: String?, server: String?) -> SoundTheme {
+        guard let device else { return Self.server(server) }
+        return SoundTheme(rawValue: device) ?? fallback
+    }
+
+    /// `kc_<theme>_<sound>`; nil for `silent`, which has no clip.
+    func clipName(_ sound: SoundClass) -> String? {
+        sound == .silent ? nil : "kc_\(rawValue)_\(sound.rawValue)"
+    }
+
+    /// Bundled file under `Contents/Resources` (where `UNNotificationSound(named:)` looks).
+    func fileName(_ sound: SoundClass) -> String? {
+        clipName(sound).map { $0 + ".caf" }
     }
 }
 
@@ -320,21 +366,18 @@ enum CatalogSync {
 
     // MARK: Sounds (spec §8.6)
 
-    /// `soundClass == nil` (or unknown) means the catalog doesn't know the topic: the legacy rule
-    /// applies (sound for priority 4–5, or for everything with "Play sound for every message").
-    /// Catalog topics follow their class; priority 1–2 stays quiet (same as Android's `-low` channels).
-    static func soundChoice(soundClass: String?, soundForAll: Bool, priority: Int)
+    /// `soundClass == nil` means the catalog doesn't know the topic: the legacy rule applies
+    /// (system sound for priority 4–5, or for everything with "Play sound for every message").
+    /// Catalog topics play their class's clip from `theme`; an unknown class is `default`.
+    /// Priority 1–2 stays quiet (same as Android's `-low` channels).
+    static func soundChoice(soundClass: String?, theme: SoundTheme = .fallback, soundForAll: Bool, priority: Int)
         -> (sound: NotificationSoundChoice, timeSensitive: Bool) {
-        guard let raw = soundClass, let cls = SoundClass(rawValue: raw) else {
+        guard let raw = soundClass else {
             return (soundForAll || priority >= 4 ? .system : .off, false)
         }
-        if priority <= 2 { return (.off, false) }
-        switch cls {
-        case .silent: return (.off, false)
-        case .default: return (.system, false)
-        case .alert: return (.named(cls.fileName!), false)
-        case .urgent: return (.named(cls.fileName!), true)
-        }
+        let cls = SoundClass(rawValue: raw) ?? .default
+        guard priority > 2, let file = theme.fileName(cls) else { return (.off, false) }
+        return (.named(file), cls == .urgent)
     }
 }
 

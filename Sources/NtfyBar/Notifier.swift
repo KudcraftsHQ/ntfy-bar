@@ -11,8 +11,10 @@ enum Notifier {
 
     /// Posts a notification. If the message has an image attachment or icon, it is fetched
     /// (disk-cached, ≤5s) and attached as the thumbnail; failures fall back to no image.
-    /// `soundClass` is the catalog sound class of the topic (nil = not a catalog topic).
-    static func post(_ m: NtfyMessage, soundForAll: Bool, soundClass: String? = nil, authorization: String?) async {
+    /// `soundClass` is the catalog sound class of the topic (nil = not a catalog topic); its clip
+    /// comes from `theme`.
+    static func post(_ m: NtfyMessage, soundForAll: Bool, soundClass: String? = nil,
+                     theme: SoundTheme = .fallback, authorization: String?) async {
         var attachment: UNNotificationAttachment?
         if let imageURL = m.thumbnailURL,
            let file = await IconCache.file(for: imageURL, authorization: authorization),
@@ -31,7 +33,7 @@ enum Notifier {
         if m.hasTitle { content.subtitle = m.topic }
         content.body = TextUtil.plain(m.body)
         content.threadIdentifier = m.topic
-        let choice = CatalogSync.soundChoice(soundClass: soundClass, soundForAll: soundForAll,
+        let choice = CatalogSync.soundChoice(soundClass: soundClass, theme: theme, soundForAll: soundForAll,
                                              priority: m.effectivePriority)
         switch choice.sound {
         case .off: break
@@ -76,5 +78,24 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             AppModel.shared.handleNotificationClick(id: id, url: url)
         }
         completionHandler()
+    }
+}
+
+/// Plays a bundled clip directly, for the theme preview in Settings.
+@MainActor
+enum SoundPreview {
+    private static var playing: NSSound?
+
+    static func play(_ theme: SoundTheme, _ sound: SoundClass) {
+        playing?.stop()
+        playing = nil
+        guard let name = theme.clipName(sound),
+              let url = Bundle.main.url(forResource: name, withExtension: "caf"),
+              let clip = NSSound(contentsOf: url, byReference: true) else {
+            Log.write("sound preview: \(theme.rawValue)/\(sound.rawValue) is not in the bundle")
+            return
+        }
+        playing = clip
+        clip.play()
     }
 }

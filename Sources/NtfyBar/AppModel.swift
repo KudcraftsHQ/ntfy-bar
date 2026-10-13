@@ -336,8 +336,9 @@ final class AppModel {
         if notifies {
             let sound = settings.soundForAll
             let soundClass = settings.topic(m.topic)?.sound
+            let theme = settings.effectiveSoundTheme
             let auth = m.thumbnailURL.flatMap(authorization(for:))
-            Task { await Notifier.post(m, soundForAll: sound, soundClass: soundClass, authorization: auth) }
+            Task { await Notifier.post(m, soundForAll: sound, soundClass: soundClass, theme: theme, authorization: auth) }
         }
         Log.write("message: id=\(m.id) topic=\(m.topic) notified=\(notifies)")
         scheduleSave()
