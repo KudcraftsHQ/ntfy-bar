@@ -16,8 +16,10 @@ enum MascotGlyph {
     static func image(_ state: State, size: CGFloat = 18) -> NSImage {
         let image = NSImage(size: NSSize(width: size, height: size), flipped: true) { rect in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            // Artwork lives in a 100-unit box; this crop is the glyph's bounds within it.
-            let viewBox = CGRect(x: 9, y: 5, width: 88, height: 88)
+            // Artwork lives in a 100-unit box. The crop is centred vertically on the tile rather
+            // than on tile + badge, so the tile sits on the menu bar's centre line like its
+            // neighbours and the text beside it; the badge reaches the top edge.
+            let viewBox = CGRect(x: 9, y: 11, width: 88, height: 88)
             ctx.scaleBy(x: rect.width / viewBox.width, y: rect.height / viewBox.height)
             ctx.translateBy(x: -viewBox.minX, y: -viewBox.minY)
             draw(state, in: ctx)
