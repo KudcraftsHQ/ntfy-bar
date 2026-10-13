@@ -37,6 +37,7 @@ extension AppModel {
             var next = settings
             next.topics = CatalogSync.reconcile(current: settings.topics, catalog: catalog)
             next.syncTopic = catalog.syncTopic
+            next.serverSoundTheme = catalog.soundTheme
             let added = next.topics.filter { $0.enabled && !known.contains($0.name) }.map(\.name)
             Log.write("catalog: version=\(catalog.version) topics=\(next.topics.count) added=\(added.count)")
 
@@ -101,6 +102,7 @@ extension AppModel {
         next.serverURL = server.trimmingCharacters(in: .whitespacesAndNewlines)
         next.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
         next.syncTopic = nil  // the previous account's
+        next.serverSoundTheme = nil
         // Apply server + user without restarting anything, so no request ever pairs the old
         // credentials with the new server; updateCredentials then restarts stream and catalog once.
         suppressRestarts = true

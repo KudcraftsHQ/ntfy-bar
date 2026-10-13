@@ -31,14 +31,27 @@ Settings › Catalog › "Sync topics from the server" (default: on, except for 
 
 ## Sounds
 
-| Class | macOS |
+Every catalog topic has a sound class, and every class has a clip in each of ten bundled themes
+(`Sources/NtfyBar/Resources/Sounds/kc_<theme>_<sound>.caf`, 70 clips; `build.sh` copies them into
+`Contents/Resources`, where `UNNotificationSound(named:)` finds them).
+
+| Class | Meaning |
 |---|---|
 | `silent` | no sound |
-| `default` | system notification sound |
-| `alert` | `kc_alert.caf` |
-| `urgent` | `kc_urgent.caf`, time-sensitive |
+| `default` | ordinary message |
+| `alert` | look at this soon |
+| `urgent` | prod broken, money at risk; time-sensitive |
+| `cash` | order paid |
+| `done` | job or agent finished |
+| `fail` | build, deploy or job failed |
+| `ask` | an agent needs an answer |
 
-Unknown classes are treated as `default`. Priority 1–2 messages are always quiet. Topics the catalog doesn't know keep the old rule (sound for
-priority 4–5, or for everything with "Play sound for every message"). The two `.caf` files are
-placeholders synthesized with ffmpeg; replace them in `Sources/NtfyBar/Resources/Sounds/`.
-Time-sensitive delivery needs an entitlement that ad-hoc builds lack, so macOS may treat urgent like alert.
+Themes: `wood`, `glass`, `soft`, `chip`, `pluck`, `keys`, `space`, `cabin`, `cockpit`, `terminal`.
+The theme is this Mac's choice in **Settings › Notifications › Sound theme** if one is picked there,
+else the server's `sound_theme` from `/v1/catalog`, else `cabin` (also for a server that sends none,
+or an unknown name). The buttons under the picker play each clip of the theme.
+
+Unknown classes are treated as `default`. Priority 1–2 messages are always quiet. Topics the catalog
+doesn't know keep the old rule (system sound for priority 4–5, or for everything with "Play sound for
+every message"). The clips are synthesized; their source is `docs/kudcrafts/sounds/` in the ntfy
+server repo.

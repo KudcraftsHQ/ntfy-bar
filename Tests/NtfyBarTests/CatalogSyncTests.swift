@@ -76,6 +76,8 @@ final class CatalogSyncTests: XCTestCase {
         XCTAssertNil(s.topics[0].sound)
         XCTAssertNil(s.catalogEnabled)
         XCTAssertNil(s.syncTopic)
+        XCTAssertNil(s.soundTheme)
+        XCTAssertNil(s.serverSoundTheme)
         XCTAssertTrue(s.soundForAll)
         XCTAssertTrue(s.showsUnreadCount)
     }
@@ -85,6 +87,8 @@ final class CatalogSyncTests: XCTestCase {
         s.serverURL = "https://ntfy.kudcrafts.com"
         s.syncTopic = "st_abc"
         s.catalogEnabled = false
+        s.soundTheme = "wood"
+        s.serverSoundTheme = "cabin"
         var t = TopicConfig(name: "facemap-orders")
         t.managed = true
         t.app = "facemap"
@@ -217,33 +221,81 @@ final class CatalogSyncTests: XCTestCase {
     // MARK: Sounds
 
     func testSoundChoice() {
-        // Not a catalog topic: legacy behaviour.
+        // not a catalog topic: legacy rule, system sound
         XCTAssertEqual(CatalogSync.soundChoice(soundClass: nil, soundForAll: false, priority: 3).sound, .off)
         XCTAssertEqual(CatalogSync.soundChoice(soundClass: nil, soundForAll: false, priority: 4).sound, .system)
         XCTAssertEqual(CatalogSync.soundChoice(soundClass: nil, soundForAll: true, priority: 1).sound, .system)
-        XCTAssertEqual(CatalogSync.soundChoice(soundClass: "bogus", soundForAll: false, priority: 5).sound, .system)
-        // Catalog classes.
+        XCTAssertEqual(CatalogSync.soundChoice(soundClass: nil, theme: .chip, soundForAll: true, priority: 3).sound,
+                       .system)
+        // catalog topic: the class's clip from the theme, cabin unless told otherwise
         XCTAssertEqual(CatalogSync.soundChoice(soundClass: "silent", soundForAll: true, priority: 5).sound, .off)
-        XCTAssertEqual(CatalogSync.soundChoice(soundClass: "default", soundForAll: false, priority: 3).sound, .system)
-        XCTAssertEqual(CatalogSync.soundChoice(soundClass: "alert", soundForAll: false, priority: 3).sound,
-                       .named("kc_alert.caf"))
+        XCTAssertEqual(CatalogSync.soundChoice(soundClass: "default", soundForAll: false, priority: 3).sound,
+                       .named("kc_cabin_default.caf"))
+        XCTAssertEqual(CatalogSync.soundChoice(soundClass: "alert", theme: .wood, soundForAll: false, priority: 3).sound,
+                       .named("kc_wood_alert.caf"))
+        for cls in ["cash", "done", "fail", "ask"] {
+            let choice = CatalogSync.soundChoice(soundClass: cls, theme: .terminal, soundForAll: false, priority: 3)
+            XCTAssertEqual(choice.sound, .named("kc_terminal_\(cls).caf"))
+            XCTAssertFalse(choice.timeSensitive)
+        }
+        // an unknown class is `default`
+        XCTAssertEqual(CatalogSync.soundChoice(soundClass: "bogus", theme: .glass, soundForAll: false, priority: 5).sound,
+                       .named("kc_glass_default.caf"))
         let urgent = CatalogSync.soundChoice(soundClass: "urgent", soundForAll: false, priority: 4)
-        XCTAssertEqual(urgent.sound, .named("kc_urgent.caf"))
+        XCTAssertEqual(urgent.sound, .named("kc_cabin_urgent.caf"))
         XCTAssertTrue(urgent.timeSensitive)
-        // Low priority stays quiet, like Android's -low channels.
+        // low priority stays quiet whatever the class
         let low = CatalogSync.soundChoice(soundClass: "urgent", soundForAll: true, priority: 2)
         XCTAssertEqual(low.sound, .off)
         XCTAssertFalse(low.timeSensitive)
     }
 
+    func testSoundThemeResolution() {
+        XCTAssertEqual(SoundTheme.allCases.count, 10)
+        XCTAssertEqual(SoundClass.clips.count, 7)
+        XCTAssertEqual(SoundTheme.resolve(device: nil, server: nil), .cabin, "older server")
+        XCTAssertEqual(SoundTheme.resolve(device: nil, server: "glass"), .glass)
+        XCTAssertEqual(SoundTheme.resolve(device: nil, server: "nope"), .cabin, "unknown server theme")
+        XCTAssertEqual(SoundTheme.resolve(device: "pluck", server: "glass"), .pluck, "this Mac wins")
+        XCTAssertEqual(SoundTheme.resolve(device: "nope", server: "glass"), .cabin, "unknown device theme")
+        XCTAssertNil(SoundTheme.cabin.fileName(.silent))
+        XCTAssertEqual(SoundTheme.cockpit.fileName(.ask), "kc_cockpit_ask.caf")
+
+        var s = AppSettings()
+        XCTAssertEqual(s.effectiveSoundTheme, .cabin)
+        s.serverSoundTheme = "space"
+        XCTAssertEqual(s.effectiveSoundTheme, .space)
+        s.soundTheme = "keys"
+        XCTAssertEqual(s.effectiveSoundTheme, .keys)
+    }
+
+    func testCatalogSoundTheme() throws {
+        XCTAssertNil(try JSONDecoder().decode(Catalog.self, from: Data(Self.catalogJSON.utf8)).soundTheme)
+        let json = #"{"version":2,"sound_theme":"cockpit","apps":[]}"#
+        XCTAssertEqual(try JSONDecoder().decode(Catalog.self, from: Data(json.utf8)).soundTheme, "cockpit")
+        let empty = #"{"version":2,"sound_theme":"","apps":[]}"#
+        XCTAssertNil(try JSONDecoder().decode(Catalog.self, from: Data(empty.utf8)).soundTheme)
+    }
+
+    func testNewClassesSurviveReconcile() {
+        let app = Catalog.AppEntry(id: "shop", name: "Shop", icon: nil, sound: "cash",
+                                   topics: [Catalog.TopicEntry(topic: "shop-orders", sound: nil),
+                                            Catalog.TopicEntry(topic: "shop-builds", sound: "fail")])
+        let result = CatalogSync.reconcile(current: [], catalog: Catalog(apps: [app]))
+        XCTAssertEqual(result.map(\.sound), ["cash", "fail"])
+    }
+
+    /// All 70 clips, and nothing else, are in the folder `build.sh` copies into the bundle.
     func testBundledSoundFilesExist() throws {
         let dir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/NtfyBar/Resources/Sounds")
-        for cls in SoundClass.allCases {
-            guard let file = cls.fileName else { continue }
-            XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent(file).path), file)
+        var expected = Set<String>()
+        for theme in SoundTheme.allCases {
+            for cls in SoundClass.clips { expected.insert(try XCTUnwrap(theme.fileName(cls))) }
         }
+        XCTAssertEqual(expected.count, 70)
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: dir.path)), expected)
     }
 
     // MARK: Sync signal, requests, helpers

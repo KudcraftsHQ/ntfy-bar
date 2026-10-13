@@ -117,6 +117,17 @@ struct SettingsView: View {
                 Toggle("Play sound for every message", isOn: $model.settings.soundForAll)
                 Text("High-priority messages (4–5) always play a sound. Muted topics never notify.")
                     .font(.caption).foregroundStyle(.secondary)
+                Picker("Sound theme", selection: $model.settings.soundTheme) {
+                    Text("Follow server (\(SoundTheme.server(model.settings.serverSoundTheme).label))")
+                        .tag(String?.none)
+                    Divider()
+                    ForEach(SoundTheme.allCases, id: \.self) { theme in
+                        Text(theme.label).tag(String?.some(theme.rawValue))
+                    }
+                }
+                SoundThemePreview(theme: model.settings.effectiveSoundTheme)
+                Text("Topics synced from the server play their app's sound in this theme. The choice is for this Mac only.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if model.notificationsAllowed == false {
                     HStack {
                         Text("Notifications are not allowed for ntfy-bar.")
@@ -246,6 +257,26 @@ struct SettingsView: View {
             loginError = error.localizedDescription
         }
         loginStatus = SMAppService.mainApp.status
+    }
+}
+
+/// One button per sound of a theme; each plays the bundled clip.
+private struct SoundThemePreview: View {
+    let theme: SoundTheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Preview \(theme.label)")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 58), spacing: 6)], alignment: .leading, spacing: 6) {
+                ForEach(SoundClass.clips, id: \.self) { sound in
+                    Button { SoundPreview.play(theme, sound) } label: {
+                        Text(sound.label).frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.small)
+                    .help(sound.meaning)
+                }
+            }
+        }
     }
 }
 
