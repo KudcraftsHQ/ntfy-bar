@@ -186,13 +186,23 @@ enum TextUtil {
         )) ?? AttributedString(s)
     }
 
+    /// Rows are rebuilt as they scroll back into view; markdown parsing is too slow to redo each time.
+    nonisolated(unsafe) private static let previewCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 4000
+        return cache
+    }()
+
     /// Plain-text preview for list rows: markdown stripped, blank lines collapsed.
     static func preview(_ s: String) -> String {
-        plain(s)
+        if let cached = previewCache.object(forKey: s as NSString) { return cached as String }
+        let result = plain(s)
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
+        previewCache.setObject(result as NSString, forKey: s as NSString)
+        return result
     }
 
     /// Rough markdown → plain text for notification bodies.
