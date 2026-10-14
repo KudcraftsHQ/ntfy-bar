@@ -13,6 +13,7 @@ struct MenuView: View {
     @State private var windowRef = WindowRef()
 
     static let width: CGFloat = 380
+    static let maxListHeight: CGFloat = 470
 
     private var visible: [Entry] {
         guard let filter else { return model.entries }
@@ -185,14 +186,23 @@ struct MenuView: View {
     private var groups: [DayGroup] {
         let calendar = Calendar.current
         var result: [DayGroup] = []
+        var day: Date?
+        var dayEnd = Date.distantPast
+        var bucket: [Entry] = []
+        // Entries are newest first; only call into Calendar when a message crosses a day boundary.
         for entry in visible {
-            let day = calendar.startOfDay(for: entry.message.date)
-            if let last = result.last, last.day == day {
-                result[result.count - 1] = DayGroup(day: day, entries: last.entries + [entry])
-            } else {
-                result.append(DayGroup(day: day, entries: [entry]))
+            let date = entry.message.date
+            if let current = day, date >= current, date < dayEnd {
+                bucket.append(entry)
+                continue
             }
+            if let current = day { result.append(DayGroup(day: current, entries: bucket)) }
+            let start = calendar.startOfDay(for: date)
+            day = start
+            dayEnd = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+            bucket = [entry]
         }
+        if let current = day { result.append(DayGroup(day: current, entries: bucket)) }
         return result
     }
 
@@ -235,14 +245,18 @@ struct MenuView: View {
                     }
                     .padding(.vertical, 6)
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                // Capped so scrolling a long list (whose lazy height estimate keeps shifting) doesn't
+                // re-render the whole popover on every frame once it's taller than the viewport.
+                .onGeometryChange(for: CGFloat.self) { min($0.size.height, Self.maxListHeight) } action: {
+                    if $0 != contentHeight { contentHeight = $0 }
+                }
             }
             .frame(height: listHeight(groups: groups, headers: showHeaders))
         }
     }
 
     private func listHeight(groups: [DayGroup], headers: Bool) -> CGFloat {
-        let maxHeight: CGFloat = 470
+        let maxHeight = Self.maxListHeight
         if contentHeight > 0 { return min(maxHeight, contentHeight) }
         let rows = groups.reduce(0) { $0 + $1.entries.count }
         let estimate = CGFloat(rows) * 86 + (headers ? CGFloat(groups.count) * 30 : 0) + 12
@@ -405,9 +419,8 @@ struct MessageRow: View {
     @State private var hovering = false
 
     private var m: NtfyMessage { entry.message }
-    private var preview: String { TextUtil.preview(m.body) }
     /// Drops ellipses the sender already put at line ends, so SwiftUI's truncation doesn't render "……".
-    private var collapsedPreview: String {
+    private static func collapsed(_ preview: String) -> String {
         preview.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
             var l = String(line)
             while l.hasSuffix("…") || l.hasSuffix("...") { l = String(l.dropLast(l.hasSuffix("…") ? 1 : 3)) }
@@ -415,13 +428,13 @@ struct MessageRow: View {
         }.joined(separator: "\n")
     }
 
-    private var expandable: Bool {
-        let p = preview
-        return p.count > 90 || p.filter { $0 == "\n" }.count >= 2
+    private static func isExpandable(_ preview: String) -> Bool {
+        preview.count > 90 || preview.filter { $0 == "\n" }.count >= 2
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        let preview = TextUtil.preview(m.body)
+        return HStack(alignment: .top, spacing: 10) {
             MessageIcon(url: iconURL, topic: m.topic)
                 .overlay(alignment: .bottomTrailing) {
                     if m.effectivePriority >= 4 { PriorityBadge(priority: m.effectivePriority).offset(x: 4, y: 4) }
@@ -446,7 +459,7 @@ struct MessageRow: View {
                 }
                 if !preview.isEmpty {
                     HStack(alignment: .bottom, spacing: 4) {
-                        Text(expanded ? preview : collapsedPreview)
+                        Text(expanded ? preview : Self.collapsed(preview))
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .lineLimit(expanded ? nil : 2)
@@ -454,7 +467,7 @@ struct MessageRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         // Always laid out when expandable, only faded in on hover, so hovering never reflows the text.
-                        if expandable {
+                        if Self.isExpandable(preview) {
                             Button(action: toggleExpanded) {
                                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 9, weight: .semibold))
