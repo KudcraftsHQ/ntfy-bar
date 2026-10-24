@@ -12,6 +12,9 @@ struct NtfyMessage: Codable, Hashable, Identifiable, Sendable {
     var click: String?
     var icon: String?
     var attachment: NtfyAttachment?
+    /// Action buttons (`view`, `http`, `copy`, `broadcast`). Optional so stored history from
+    /// older builds still decodes.
+    var actions: [NtfyAction]? = nil
 
     var date: Date { Date(timeIntervalSince1970: TimeInterval(time)) }
     var effectivePriority: Int { priority ?? 3 }
@@ -31,6 +34,55 @@ struct NtfyMessage: Codable, Hashable, Identifiable, Sendable {
     var thumbnailURL: URL? {
         if let a = attachment, a.isImage, let url = URL(string: a.url) { return url }
         return iconURL
+    }
+
+    /// The actions macOS can run, in order, at most `NtfyAction.maxButtons`. Empty means the
+    /// notification gets no buttons and a click just opens `openURL`, as before.
+    var buttonActions: [NtfyAction] {
+        Array((actions ?? []).filter(\.isSupported).prefix(NtfyAction.maxButtons))
+    }
+}
+
+/// One ntfy action button, as published (https://docs.ntfy.sh/publish/#action-buttons).
+struct NtfyAction: Codable, Hashable, Sendable {
+    /// ntfy allows three buttons per message; Android shows three too.
+    static let maxButtons = 3
+
+    var id: String?
+    let action: String
+    let label: String
+    var clear: Bool?
+    var url: String?
+    var method: String?
+    var headers: [String: String]?
+    var body: String?
+    var value: String?
+
+    /// `broadcast` is Android-only. `view`/`http` need an http(s) URL, `copy` a value.
+    var isSupported: Bool {
+        guard !label.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        switch action {
+        case "view", "http": return webURL != nil
+        case "copy": return value != nil
+        default: return false
+        }
+    }
+
+    var webURL: URL? {
+        guard let url, let u = URL(string: url), let scheme = u.scheme?.lowercased(),
+              scheme == "https" || scheme == "http", u.host != nil else { return nil }
+        return u
+    }
+
+    /// The request an `http` action sends. ntfy's default method is POST.
+    var httpRequest: URLRequest? {
+        guard action == "http", let url = webURL else { return nil }
+        var req = URLRequest(url: url, timeoutInterval: 30)
+        let m = (method ?? "").trimmingCharacters(in: .whitespaces).uppercased()
+        req.httpMethod = m.isEmpty ? "POST" : m
+        for (k, v) in headers ?? [:] { req.setValue(v, forHTTPHeaderField: k) }
+        if let body, !["GET", "HEAD"].contains(req.httpMethod ?? "") { req.httpBody = Data(body.utf8) }
+        return req
     }
 }
 
@@ -61,12 +113,13 @@ struct NtfyEvent: Decodable, Sendable {
     let click: String?
     let icon: String?
     let attachment: NtfyAttachment?
+    let actions: [NtfyAction]?
 
     var asMessage: NtfyMessage? {
         guard event == "message", let id, let time, let topic else { return nil }
         return NtfyMessage(id: id, time: time, topic: topic, title: title, message: message,
                            priority: priority, tags: tags, click: click,
-                           icon: icon, attachment: attachment)
+                           icon: icon, attachment: attachment, actions: actions)
     }
 }
 
